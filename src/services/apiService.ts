@@ -35,7 +35,7 @@ export const generateScript = async (prompt: string, length: string = "medium") 
   const scriptPrompt = `Generate a creative script ${lengthGuide} based on the following prompt: "${prompt}". 
   Make it engaging, conversational and suitable for voice narration. Don't include any headers, just the script content.`;
   
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
