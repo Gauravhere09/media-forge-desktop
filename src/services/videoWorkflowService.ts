@@ -2,6 +2,7 @@
 import { generateScript } from "./apiService";
 import { createLocalFileUrl } from "./apiService";
 import useMediaStore from "@/store/mediaStore";
+import { useToast } from "@/hooks/use-toast";
 
 interface ScenePrompt {
   scene: string;
@@ -14,7 +15,7 @@ export async function generateScenePrompts(mainPrompt: string): Promise<ScenePro
     : "";
 
   if (!apiKey) {
-    throw new Error("Gemini API key not found");
+    throw new Error("Gemini API key not found. Please add your API key in the Settings tab.");
   }
 
   const scenePromptRequest = `Based on this video idea: "${mainPrompt}", generate 3 distinct scene descriptions for a short video. 
@@ -36,6 +37,11 @@ export async function generateScenePrompts(mainPrompt: string): Promise<ScenePro
   });
 
   const data = await response.json();
+  
+  if (!response.ok) {
+    console.error("Gemini API error:", data);
+    throw new Error(`Failed to generate scene prompts: ${data.error?.message || 'Unknown error'}`);
+  }
   
   if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
     const responseText = data.candidates[0].content.parts[0].text;
@@ -68,6 +74,31 @@ export async function processBatchImages(scenePrompts: ScenePrompt[]): Promise<s
     "prompthero/openjourney"
   ];
   
+  const apiKey = localStorage.getItem("mediaforge_api_keys") 
+    ? JSON.parse(localStorage.getItem("mediaforge_api_keys") || "[]").find((k: any) => k.name === "huggingface")?.key 
+    : "";
+
+  if (!apiKey) {
+    throw new Error("Hugging Face API key not found. Please add your API key in the Settings tab.");
+  }
+
+  // Validate API key first with a test request
+  try {
+    const testResponse = await fetch(`https://api-inference.huggingface.co/models/${models[0]}`, {
+      method: "HEAD",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+      },
+    });
+    
+    if (testResponse.status === 401 || testResponse.status === 403) {
+      throw new Error("Invalid or unauthorized Hugging Face API key. Please check your key in the Settings tab.");
+    }
+  } catch (error) {
+    console.error("Error validating Hugging Face API key:", error);
+    throw new Error("Failed to validate Hugging Face API key. Please check your internet connection and API key.");
+  }
+  
   for (const scene of scenePrompts) {
     let success = false;
     
@@ -81,13 +112,13 @@ export async function processBatchImages(scenePrompts: ScenePrompt[]): Promise<s
           success = true;
           break;
         } catch (error) {
-          console.error(`Failed with model ${model}, trying next model...`);
+          console.error(`Failed with model ${model}, trying next model...`, error);
         }
       }
     }
     
     if (!success) {
-      throw new Error(`Failed to generate image for scene: ${scene.scene}`);
+      throw new Error(`Failed to generate image for scene: ${scene.scene}. Please check your Hugging Face API key.`);
     }
   }
   
@@ -100,7 +131,7 @@ async function generateImage(prompt: string, model: string): Promise<Blob> {
     : "";
 
   if (!apiKey) {
-    throw new Error("Hugging Face API key not found");
+    throw new Error("Hugging Face API key not found. Please add your API key in the Settings tab.");
   }
 
   const response = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
@@ -115,7 +146,11 @@ async function generateImage(prompt: string, model: string): Promise<Blob> {
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to generate image with model ${model}`);
+    // Check specific error codes
+    if (response.status === 401 || response.status === 403) {
+      throw new Error(`Failed to generate image: Invalid or unauthorized Hugging Face API key`);
+    }
+    throw new Error(`Failed to generate image with model ${model} (HTTP ${response.status})`);
   }
   
   return await response.blob();
@@ -133,53 +168,89 @@ export async function generateVideoContent(userPrompt: string): Promise<VideoGen
   const store = useMediaStore.getState();
   
   // 1. Generate script from user prompt
-  const script = await generateScript(userPrompt);
-  store.setCurrentScript(script);
-  store.addGeneratedFile({
-    name: `Script ${new Date().toLocaleDateString()}`,
-    type: "script",
-    url: "#",
-    content: script
-  });
+  let script;
+  try {
+    script = await generateScript(userPrompt);
+    store.setCurrentScript(script);
+    store.addGeneratedFile({
+      name: `Script ${new Date().toLocaleDateString()}`,
+      type: "script",
+      url: "#",
+      content: script
+    });
+    console.log("Script generated successfully:", script);
+  } catch (error) {
+    console.error("Error generating script:", error);
+    throw error;
+  }
   
   // 2. Generate scene prompts based on the script
-  const scenePrompts = await generateScenePrompts(userPrompt);
+  let scenePrompts;
+  try {
+    scenePrompts = await generateScenePrompts(userPrompt);
+    console.log("Scene prompts generated successfully:", scenePrompts);
+  } catch (error) {
+    console.error("Error generating scene prompts:", error);
+    throw error;
+  }
   
   // 3. Generate images for each scene
-  const imageUrls = await processBatchImages(scenePrompts);
-  imageUrls.forEach((url, index) => {
-    store.addGeneratedFile({
-      name: `Scene ${index + 1} Image`,
-      type: "image",
-      url: url
+  let imageUrls;
+  try {
+    imageUrls = await processBatchImages(scenePrompts);
+    console.log("Images generated successfully:", imageUrls);
+    imageUrls.forEach((url, index) => {
+      store.addGeneratedFile({
+        name: `Scene ${index + 1} Image`,
+        type: "image",
+        url: url
+      });
     });
-  });
-  
-  // Use the first image as the main preview image
-  if (imageUrls.length > 0) {
-    store.setCurrentImageUrl(imageUrls[0]);
+    
+    // Use the first image as the main preview image
+    if (imageUrls.length > 0) {
+      store.setCurrentImageUrl(imageUrls[0]);
+    }
+  } catch (error) {
+    console.error("Error generating images:", error);
+    throw error;
   }
   
   // 4. Generate audio from the script
   let audioUrl = null;
   try {
-    const voices = await fetch("https://api.elevenlabs.io/v1/voices", {
+    // Validate ElevenLabs API key first
+    const elevenLabsApiKey = localStorage.getItem("mediaforge_api_keys") 
+      ? JSON.parse(localStorage.getItem("mediaforge_api_keys") || "[]").find((k: any) => k.name === "elevenlabs")?.key 
+      : "";
+      
+    if (!elevenLabsApiKey) {
+      throw new Error("ElevenLabs API key not found. Please add your API key in the Settings tab.");
+    }
+    
+    // Check if API key is valid with a simple request
+    const voicesResponse = await fetch("https://api.elevenlabs.io/v1/voices", {
       headers: {
-        "x-api-key": localStorage.getItem("mediaforge_api_keys") 
-          ? JSON.parse(localStorage.getItem("mediaforge_api_keys") || "[]").find((k: any) => k.name === "elevenlabs")?.key 
-          : "",
+        "x-api-key": elevenLabsApiKey,
       },
-    }).then(res => res.json());
+    });
+    
+    if (!voicesResponse.ok) {
+      if (voicesResponse.status === 401) {
+        throw new Error("Invalid ElevenLabs API key. Please check your key in the Settings tab.");
+      }
+      throw new Error(`ElevenLabs API error (HTTP ${voicesResponse.status})`);
+    }
+    
+    const voices = await voicesResponse.json();
     
     if (voices.voices && voices.voices.length > 0) {
       const defaultVoice = voices.voices[0].voice_id;
       
-      const audioBlob = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${defaultVoice}`, {
+      const audioResponse = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${defaultVoice}`, {
         method: "POST",
         headers: {
-          "x-api-key": localStorage.getItem("mediaforge_api_keys") 
-            ? JSON.parse(localStorage.getItem("mediaforge_api_keys") || "[]").find((k: any) => k.name === "elevenlabs")?.key 
-            : "",
+          "x-api-key": elevenLabsApiKey,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -190,7 +261,16 @@ export async function generateVideoContent(userPrompt: string): Promise<VideoGen
             similarity_boost: 0.75,
           },
         }),
-      }).then(res => res.blob());
+      });
+      
+      if (!audioResponse.ok) {
+        if (audioResponse.status === 401) {
+          throw new Error("Invalid ElevenLabs API key for audio generation.");
+        }
+        throw new Error(`Failed to generate audio (HTTP ${audioResponse.status})`);
+      }
+      
+      const audioBlob = await audioResponse.blob();
       
       audioUrl = URL.createObjectURL(audioBlob);
       store.setCurrentAudioUrl(audioUrl);
@@ -200,9 +280,12 @@ export async function generateVideoContent(userPrompt: string): Promise<VideoGen
         type: "audio",
         url: audioUrl
       });
+      
+      console.log("Audio generated successfully");
     }
   } catch (error) {
     console.error("Error generating audio:", error);
+    throw error;
   }
   
   // We'll implement video generation in a separate step

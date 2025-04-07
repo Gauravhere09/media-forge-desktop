@@ -5,12 +5,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Check, X } from "lucide-react";
+import { Check, X, ExternalLink } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface ApiKey {
   name: string;
   key: string;
   isSet: boolean;
+}
+
+interface ApiKeyInfo {
+  name: string;
+  description: string;
+  requiredFor: string;
+  link: string;
+  linkText: string;
 }
 
 const ApiKeyManager: React.FC = () => {
@@ -20,6 +29,30 @@ const ApiKeyManager: React.FC = () => {
     { name: "elevenlabs", key: "", isSet: false },
     { name: "huggingface", key: "", isSet: false },
   ]);
+
+  const keyInfo: ApiKeyInfo[] = [
+    {
+      name: "gemini",
+      description: "Used to generate scripts and scene descriptions",
+      requiredFor: "script and scene generation",
+      link: "https://aistudio.google.com/app/apikey",
+      linkText: "Get Gemini API Key"
+    },
+    {
+      name: "elevenlabs",
+      description: "Used to convert text to realistic speech",
+      requiredFor: "voice generation",
+      link: "https://elevenlabs.io/app/api-keys",
+      linkText: "Get ElevenLabs API Key"
+    },
+    {
+      name: "huggingface",
+      description: "Used for AI image generation from scene descriptions",
+      requiredFor: "image generation",
+      link: "https://huggingface.co/settings/tokens",
+      linkText: "Get Hugging Face API Key"
+    }
+  ];
 
   useEffect(() => {
     // Load saved API keys from localStorage
@@ -71,49 +104,68 @@ const ApiKeyManager: React.FC = () => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {apiKeys.map((apiKey, index) => (
-          <div key={apiKey.name} className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor={`key-${apiKey.name}`} className="capitalize">
-                {apiKey.name} API Key
-              </Label>
-              {apiKey.isSet ? (
-                <div className="flex items-center text-green-500 text-xs">
-                  <Check size={14} className="mr-1" /> Set
-                </div>
-              ) : (
-                <div className="flex items-center text-destructive text-xs">
-                  <X size={14} className="mr-1" /> Not Set
-                </div>
-              )}
+        <Alert className="mb-4">
+          <AlertDescription>
+            All features require valid API keys. If you're experiencing errors, please ensure you've entered valid API keys below.
+          </AlertDescription>
+        </Alert>
+        
+        {apiKeys.map((apiKey, index) => {
+          const info = keyInfo.find(k => k.name === apiKey.name);
+          
+          return (
+            <div key={apiKey.name} className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor={`key-${apiKey.name}`} className="capitalize">
+                  {apiKey.name} API Key
+                </Label>
+                {apiKey.isSet ? (
+                  <div className="flex items-center text-green-500 text-xs">
+                    <Check size={14} className="mr-1" /> Set
+                  </div>
+                ) : (
+                  <div className="flex items-center text-destructive text-xs">
+                    <X size={14} className="mr-1" /> Not Set
+                  </div>
+                )}
+              </div>
+              <div className="flex space-x-2">
+                <Input
+                  id={`key-${apiKey.name}`}
+                  type="password"
+                  value={apiKey.key}
+                  onChange={(e) => {
+                    const newApiKeys = [...apiKeys];
+                    newApiKeys[index].key = e.target.value;
+                    setApiKeys(newApiKeys);
+                  }}
+                  placeholder={`Enter your ${apiKey.name} API key`}
+                  className="flex-1"
+                />
+                <Button 
+                  onClick={() => handleSaveKey(index, apiKeys[index].key)}
+                  variant="outline"
+                >
+                  Save
+                </Button>
+              </div>
+              <div className="flex justify-between items-start">
+                <p className="text-xs text-muted-foreground">
+                  {info?.description} <br/>
+                  <span className="font-medium">Required for: </span>{info?.requiredFor}
+                </p>
+                <a 
+                  href={info?.link} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="text-xs text-primary flex items-center"
+                >
+                  {info?.linkText} <ExternalLink size={12} className="ml-1" />
+                </a>
+              </div>
             </div>
-            <div className="flex space-x-2">
-              <Input
-                id={`key-${apiKey.name}`}
-                type="password"
-                value={apiKey.key}
-                onChange={(e) => {
-                  const newApiKeys = [...apiKeys];
-                  newApiKeys[index].key = e.target.value;
-                  setApiKeys(newApiKeys);
-                }}
-                placeholder={`Enter your ${apiKey.name} API key`}
-                className="flex-1"
-              />
-              <Button 
-                onClick={() => handleSaveKey(index, apiKeys[index].key)}
-                variant="outline"
-              >
-                Save
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {apiKey.name === "gemini" && "Required for script generation"}
-              {apiKey.name === "elevenlabs" && "Required for voice generation"}
-              {apiKey.name === "huggingface" && "Required for image generation"}
-            </p>
-          </div>
-        ))}
+          );
+        })}
       </CardContent>
     </Card>
   );

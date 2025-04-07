@@ -22,7 +22,7 @@ const getApiKey = (name: string): string => {
 export const generateScript = async (prompt: string, length: string = "medium") => {
   const apiKey = getApiKey("gemini");
   if (!apiKey) {
-    throw new Error("Gemini API key not found");
+    throw new Error("Gemini API key not found. Please add your API key in the Settings tab.");
   }
 
   // Length guidelines based on selection
@@ -51,6 +51,11 @@ export const generateScript = async (prompt: string, length: string = "medium") 
 
   const data = await response.json();
   
+  if (!response.ok) {
+    console.error("Gemini API error:", data);
+    throw new Error(`Failed to generate script: ${data.error?.message || 'Unknown error'}`);
+  }
+  
   if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
     return data.candidates[0].content.parts[0].text;
   } else {
@@ -62,7 +67,7 @@ export const generateScript = async (prompt: string, length: string = "medium") 
 export const getVoices = async () => {
   const apiKey = getApiKey("elevenlabs");
   if (!apiKey) {
-    throw new Error("ElevenLabs API key not found");
+    throw new Error("ElevenLabs API key not found. Please add your API key in the Settings tab.");
   }
 
   const response = await fetch("https://api.elevenlabs.io/v1/voices", {
@@ -72,6 +77,9 @@ export const getVoices = async () => {
   });
   
   if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error("Invalid ElevenLabs API key. Please check your key in the Settings tab.");
+    }
     throw new Error(`Failed to fetch voices: ${response.statusText}`);
   }
   
@@ -85,7 +93,7 @@ export const generateVoice = async (
 ): Promise<Blob> => {
   const apiKey = getApiKey("elevenlabs");
   if (!apiKey) {
-    throw new Error("ElevenLabs API key not found");
+    throw new Error("ElevenLabs API key not found. Please add your API key in the Settings tab.");
   }
 
   const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
@@ -105,7 +113,10 @@ export const generateVoice = async (
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to generate voice: ${response.statusText}`);
+    if (response.status === 401) {
+      throw new Error("Invalid ElevenLabs API key for voice generation.");
+    }
+    throw new Error(`Failed to generate voice: ${response.statusText} (HTTP ${response.status})`);
   }
   
   return await response.blob();
@@ -118,7 +129,7 @@ export const generateImage = async (
 ): Promise<Blob> => {
   const apiKey = getApiKey("huggingface");
   if (!apiKey) {
-    throw new Error("Hugging Face API key not found");
+    throw new Error("Hugging Face API key not found. Please add your API key in the Settings tab.");
   }
 
   const response = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
@@ -133,7 +144,10 @@ export const generateImage = async (
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to generate image: ${response.statusText}`);
+    if (response.status === 401 || response.status === 403) {
+      throw new Error("Invalid or unauthorized Hugging Face API key. Please check your key in the Settings tab.");
+    }
+    throw new Error(`Failed to generate image: ${response.statusText} (HTTP ${response.status})`);
   }
   
   return await response.blob();

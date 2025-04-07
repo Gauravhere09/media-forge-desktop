@@ -12,7 +12,8 @@ import FileManager from "@/components/FileManager";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader, Wand2 } from "lucide-react";
+import { Loader, Wand2, AlertCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import useMediaStore from "@/store/mediaStore";
 import { generateVideoContent, VideoGenerationResult } from "@/services/videoWorkflowService";
 import VideoWorkflow from "@/components/VideoWorkflow";
@@ -23,6 +24,7 @@ const Index = () => {
   const [userPrompt, setUserPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationResults, setGenerationResults] = useState<VideoGenerationResult | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
   
   const { 
     currentScript, 
@@ -63,6 +65,26 @@ const Index = () => {
     });
   };
 
+  const checkApiKeys = () => {
+    const apiKeys = localStorage.getItem("mediaforge_api_keys") 
+      ? JSON.parse(localStorage.getItem("mediaforge_api_keys") || "[]")
+      : [];
+
+    const hasGemini = apiKeys.some((k: any) => k.name === "gemini" && k.key);
+    const hasElevenLabs = apiKeys.some((k: any) => k.name === "elevenlabs" && k.key);
+    const hasHuggingFace = apiKeys.some((k: any) => k.name === "huggingface" && k.key);
+
+    const missingKeys = [];
+    if (!hasGemini) missingKeys.push("Gemini");
+    if (!hasElevenLabs) missingKeys.push("ElevenLabs");
+    if (!hasHuggingFace) missingKeys.push("Hugging Face");
+
+    return {
+      allKeysPresent: hasGemini && hasElevenLabs && hasHuggingFace,
+      missingKeys
+    };
+  };
+
   const handleGenerateContent = async () => {
     if (!userPrompt) {
       toast({
@@ -74,18 +96,12 @@ const Index = () => {
     }
 
     // Check API keys
-    const apiKeys = localStorage.getItem("mediaforge_api_keys") 
-      ? JSON.parse(localStorage.getItem("mediaforge_api_keys") || "[]")
-      : [];
+    const { allKeysPresent, missingKeys } = checkApiKeys();
 
-    const hasGemini = apiKeys.some((k: any) => k.name === "gemini" && k.key);
-    const hasElevenLabs = apiKeys.some((k: any) => k.name === "elevenlabs" && k.key);
-    const hasHuggingFace = apiKeys.some((k: any) => k.name === "huggingface" && k.key);
-
-    if (!hasGemini || !hasElevenLabs || !hasHuggingFace) {
+    if (!allKeysPresent) {
       toast({
         title: "Missing API Keys",
-        description: "Please set all required API keys in the settings tab.",
+        description: `Please set the following API keys in the settings tab: ${missingKeys.join(", ")}`,
         variant: "destructive",
       });
       setCurrentTab("settings");
@@ -93,6 +109,7 @@ const Index = () => {
     }
 
     setIsGenerating(true);
+    setGenerationError(null);
     
     try {
       const results = await generateVideoContent(userPrompt);
@@ -102,8 +119,9 @@ const Index = () => {
         title: "Content Generated Successfully",
         description: "Your video content has been created!",
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Content generation error:", error);
+      setGenerationError(error.message || "An unknown error occurred");
       toast({
         title: "Generation Failed",
         description: error instanceof Error ? error.message : "An unknown error occurred",
@@ -156,6 +174,13 @@ const Index = () => {
                           disabled={isGenerating}
                         />
                       </div>
+                      
+                      {generationError && (
+                        <Alert variant="destructive" className="mt-4">
+                          <AlertCircle className="h-4 w-4 mr-2" />
+                          <AlertDescription>{generationError}</AlertDescription>
+                        </Alert>
+                      )}
                       
                       {generationResults && !isGenerating && (
                         <VideoWorkflow results={generationResults} />
