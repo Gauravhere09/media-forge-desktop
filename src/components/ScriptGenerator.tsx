@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { generateScript } from "@/services/apiService";
 
 interface ScriptGeneratorProps {
   onScriptGenerated?: (script: string) => void;
@@ -45,47 +46,17 @@ const ScriptGenerator: React.FC<ScriptGeneratorProps> = ({ onScriptGenerated }) 
     setIsGenerating(true);
     
     try {
-      // Length guidelines based on selection
-      const lengthGuide = {
-        short: "about 50 words",
-        medium: "about 100-150 words",
-        long: "about 250-300 words"
-      }[scriptLength];
+      const script = await generateScript(prompt, scriptLength);
+      setGeneratedScript(script);
       
-      const scriptPrompt = `Generate a creative script ${lengthGuide} based on the following prompt: "${prompt}". 
-      Make it engaging, conversational and suitable for voice narration. Don't include any headers, just the script content.`;
-      
-      // Set up the API call to Gemini
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: scriptPrompt
-            }]
-          }]
-        })
-      });
-
-      const data = await response.json();
-      
-      if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
-        const generatedText = data.candidates[0].content.parts[0].text;
-        setGeneratedScript(generatedText);
-        if (onScriptGenerated) {
-          onScriptGenerated(generatedText);
-        }
-        
-        toast({
-          title: "Script Generated",
-          description: "Your script has been successfully created!",
-        });
-      } else {
-        throw new Error("Failed to generate script");
+      if (onScriptGenerated) {
+        onScriptGenerated(script);
       }
+      
+      toast({
+        title: "Script Generated",
+        description: "Your script has been successfully created!",
+      });
     } catch (error) {
       console.error("Script generation error:", error);
       toast({

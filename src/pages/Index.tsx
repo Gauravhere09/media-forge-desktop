@@ -8,11 +8,22 @@ import ScriptGenerator from "@/components/ScriptGenerator";
 import VoiceGenerator from "@/components/VoiceGenerator";
 import ImageGenerator from "@/components/ImageGenerator";
 import MediaPreview from "@/components/MediaPreview";
+import FileManager from "@/components/FileManager";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Loader, Wand2 } from "lucide-react";
 import useMediaStore from "@/store/mediaStore";
+import { generateVideoContent, VideoGenerationResult } from "@/services/videoWorkflowService";
+import VideoWorkflow from "@/components/VideoWorkflow";
 
 const Index = () => {
   const { toast } = useToast();
-  const [currentTab, setCurrentTab] = useState("script");
+  const [currentTab, setCurrentTab] = useState("workflow");
+  const [userPrompt, setUserPrompt] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationResults, setGenerationResults] = useState<VideoGenerationResult | null>(null);
+  
   const { 
     currentScript, 
     currentAudioUrl, 
@@ -20,6 +31,7 @@ const Index = () => {
     setCurrentScript,
     setCurrentAudioUrl,
     setCurrentImageUrl,
+    generatedFiles,
     addGeneratedFile
   } = useMediaStore();
 
@@ -51,9 +63,60 @@ const Index = () => {
     });
   };
 
+  const handleGenerateContent = async () => {
+    if (!userPrompt) {
+      toast({
+        title: "Empty Prompt",
+        description: "Please enter a video idea to generate content.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check API keys
+    const apiKeys = localStorage.getItem("mediaforge_api_keys") 
+      ? JSON.parse(localStorage.getItem("mediaforge_api_keys") || "[]")
+      : [];
+
+    const hasGemini = apiKeys.some((k: any) => k.name === "gemini" && k.key);
+    const hasElevenLabs = apiKeys.some((k: any) => k.name === "elevenlabs" && k.key);
+    const hasHuggingFace = apiKeys.some((k: any) => k.name === "huggingface" && k.key);
+
+    if (!hasGemini || !hasElevenLabs || !hasHuggingFace) {
+      toast({
+        title: "Missing API Keys",
+        description: "Please set all required API keys in the settings tab.",
+        variant: "destructive",
+      });
+      setCurrentTab("settings");
+      return;
+    }
+
+    setIsGenerating(true);
+    
+    try {
+      const results = await generateVideoContent(userPrompt);
+      setGenerationResults(results);
+      
+      toast({
+        title: "Content Generated Successfully",
+        description: "Your video content has been created!",
+      });
+    } catch (error) {
+      console.error("Content generation error:", error);
+      toast({
+        title: "Generation Failed",
+        description: error instanceof Error ? error.message : "An unknown error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   return (
     <MainLayout>
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <header className="mb-8 text-center">
           <h1 className="text-3xl sm:text-4xl font-bold mb-2 bg-gradient-to-r from-primary to-accent text-transparent bg-clip-text">
             MediaForge
@@ -66,7 +129,8 @@ const Index = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
-              <TabsList className="grid grid-cols-4 w-full">
+              <TabsList className="grid grid-cols-5 w-full">
+                <TabsTrigger value="workflow">Workflow</TabsTrigger>
                 <TabsTrigger value="script">Script</TabsTrigger>
                 <TabsTrigger value="voice">Voice</TabsTrigger>
                 <TabsTrigger value="image">Image</TabsTrigger>
@@ -74,6 +138,51 @@ const Index = () => {
               </TabsList>
 
               <div className="mt-4">
+                <TabsContent value="workflow">
+                  <Card className="glass">
+                    <CardHeader>
+                      <CardTitle>Video Generation Workflow</CardTitle>
+                      <CardDescription>
+                        Generate a complete video with script, images, and audio in one go
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Textarea
+                          placeholder="Describe your video idea in detail (e.g., 'Create a 30-second commercial about a futuristic electric car that runs on renewable energy')"
+                          value={userPrompt}
+                          onChange={(e) => setUserPrompt(e.target.value)}
+                          className="h-32 resize-none"
+                          disabled={isGenerating}
+                        />
+                      </div>
+                      
+                      {generationResults && !isGenerating && (
+                        <VideoWorkflow results={generationResults} />
+                      )}
+                    </CardContent>
+                    <CardFooter>
+                      <Button
+                        onClick={handleGenerateContent}
+                        disabled={isGenerating || !userPrompt}
+                        className="w-full"
+                      >
+                        {isGenerating ? (
+                          <>
+                            <Loader className="mr-2 h-4 w-4 animate-spin" />
+                            Generating Content...
+                          </>
+                        ) : (
+                          <>
+                            <Wand2 className="mr-2 h-4 w-4" />
+                            Generate Video Content
+                          </>
+                        )}
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                </TabsContent>
+                
                 <TabsContent value="script">
                   <ScriptGenerator onScriptGenerated={handleScriptGenerated} />
                 </TabsContent>
@@ -105,6 +214,8 @@ const Index = () => {
               audioUrl={currentAudioUrl || undefined}
               imageUrl={currentImageUrl || undefined}
             />
+            
+            <FileManager files={generatedFiles} />
           </div>
         </div>
       </div>
