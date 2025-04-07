@@ -21,7 +21,7 @@ export async function generateScenePrompts(mainPrompt: string): Promise<ScenePro
   Format the output as a JSON array with objects that have 'scene' (one-line title) and 'description' (detailed visual description) fields. 
   Make sure the descriptions are detailed enough for image generation.`;
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
